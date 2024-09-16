@@ -21,17 +21,16 @@
 
 __all__ = ["MOSS"]
 
-import asyncio
 import types
 
-from lsst.ts import salobj, utils
+from lsst.ts import salobj
 
-from . import __version__, controller, enums, mock_server
 from .config_schema import CONFIG_SCHEMA
 
 
 class MOSS(salobj.ConfigurableCsc):
-    """Class that implements the CSC for the Multi-Beam Optical Seein Sensor (MOSS).
+    """Class that implements the CSC for the
+    Multi-Beam Optical Seein Sensor (MOSS).
 
     Parameters
     ----------
@@ -48,15 +47,14 @@ class MOSS(salobj.ConfigurableCsc):
     """
 
     valid_simulation_modes = (0, 1)
-    version = __version__
 
     def __init__(
         self,
-        index,
-        config_dir=None,
-        initial_state=salobj.State.STANDBY,
-        simulation_mode=0,
-    ):
+        index: int,
+        config_dir: str | None = None,
+        initial_state: salobj.State = salobj.State.STANDBY,
+        simulation_mode: int = 0,
+    ) -> None:
         super().__init__(
             name="MOSS",
             index=index,
@@ -68,7 +66,7 @@ class MOSS(salobj.ConfigurableCsc):
         self.simulator = None
         self.log.debug("finished initializing")
 
-    async def configure(self, config):
+    async def configure(self, config: types.SimpleNamespace) -> None:
         """Configure the Electrometer CSC.
 
         Parameters
@@ -82,50 +80,3 @@ class MOSS(salobj.ConfigurableCsc):
         if instance["sal_index"] != self.salinfo.index:
             raise RuntimeError(f"No configuration found for {self.salinfo.index=}")
         self.log.debug(f"instance is {instance}")
-
-    async def handle_summary_state(self):
-        """Handle the summary of the CSC.
-
-        If transitioning to the disabled or enabled state
-
-        * Start the simulator if simulation_mode is true.
-        * Create a bucket object for LFA support.
-        * Connect to the server if it is not connected already.
-
-        If leaving the disabled state
-
-        * Disconnect from the server, if connected.
-        * If the simulator is running, stop it.
-        """
-        do_mock = False
-        create = False
-        if self.disabled_or_enabled:
-            if self.simulation_mode and self.simulator is None:
-                self.simulator = mock_server.MockServer(
-                    self.controller.electrometer_type
-                )
-                await self.simulator.start_task
-                do_mock = True
-                create = True
-            if self.bucket is None:
-                self.bucket = salobj.AsyncS3Bucket(
-                    salobj.AsyncS3Bucket.make_bucket_name(
-                        s3instance=self.controller.s3_instance
-                    ),
-                    create=create,
-                    domock=do_mock,
-                )
-            if not self.controller.connected:
-                try:
-                    await self.controller.connect()
-                except Exception:
-                    await self.fault(
-                        code=enums.Error.CONNECTION, report="Connection failed."
-                    )
-        else:
-            if self.controller is not None:
-                if self.controller.connected:
-                    await self.controller.disconnect()
-            if self.simulator is not None:
-                await self.simulator.close()
-                self.simulator = None
